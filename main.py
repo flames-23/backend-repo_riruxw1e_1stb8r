@@ -1,6 +1,11 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Any, Dict
+
+from schemas import ContactMessage
+from database import create_document, db
 
 app = FastAPI()
 
@@ -20,6 +25,19 @@ def read_root():
 def hello():
     return {"message": "Hello from the backend API!"}
 
+@app.post("/api/contact")
+def submit_contact(payload: ContactMessage) -> Dict[str, Any]:
+    """Accept contact form submissions and store them in MongoDB."""
+    # Ensure database available
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured. Set DATABASE_URL and DATABASE_NAME.")
+
+    try:
+        inserted_id = create_document("contactmessage", payload)
+        return {"ok": True, "id": inserted_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/test")
 def test_database():
     """Test endpoint to check if database is available and accessible"""
@@ -33,9 +51,6 @@ def test_database():
     }
     
     try:
-        # Try to import database module
-        from database import db
-        
         if db is not None:
             response["database"] = "✅ Available"
             response["database_url"] = "✅ Configured"
@@ -52,13 +67,10 @@ def test_database():
         else:
             response["database"] = "⚠️  Available but not initialized"
             
-    except ImportError:
-        response["database"] = "❌ Database module not found (run enable-database first)"
     except Exception as e:
         response["database"] = f"❌ Error: {str(e)[:50]}"
     
     # Check environment variables
-    import os
     response["database_url"] = "✅ Set" if os.getenv("DATABASE_URL") else "❌ Not Set"
     response["database_name"] = "✅ Set" if os.getenv("DATABASE_NAME") else "❌ Not Set"
     
